@@ -15,6 +15,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
 import android.util.Log;
+import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -23,6 +25,7 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -31,68 +34,100 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
-//    private GoogleMap mMap;
-//    private GoogleApiClient mGoogleApiClient;
-//    private LocationRequest mLocationRequest;
-//
-//
-//    @Override
-//    protected void onCreate(Bundle savedInstanceState) {
-//        super.onCreate(savedInstanceState);
-//        setContentView(R.layout.activity_maps);
-//        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
-//        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-//                .findFragmentById(R.id.map);
-//        mapFragment.getMapAsync(this);
-//
-//    }
-//
-//
-//    /**
-//     * Manipulates the map once available.
-//     * This callback is triggered when the map is ready to be used.
-//     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-//     * we just add a marker near Sydney, Australia.
-//     * If Google Play services is not installed on the device, the user will be prompted to install
-//     * it inside the SupportMapFragment. This method will only be triggered once the user has
-//     * installed Google Play services and returned to the app.
-//     */
-//    @Override
-//    public void onMapReady(GoogleMap googleMap) {
-//        mMap = googleMap;
-//
-//
-//        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-//            mMap.setMyLocationEnabled(true);
-//            Location currentLocation = LocationServices.FusedLocationApi.getLastLocation(mGoogleApiClient);
-//            mMap.moveCamera(CameraUpdateFactory.newLatLng(new LatLng(currentLocation.getLatitude(), currentLocation.getLongitude())));
-//            mMap.animateCamera(CameraUpdateFactory.zoomTo(15));
-//        }
-//        else
-//            Log.e("Location", "Location Perms Denied");
-//    }
     private GoogleMap mGoogleMap;
+    private TextView distanceTxt;
     private SupportMapFragment mapFrag;
     private LocationRequest mLocationRequest;
     private LocationCallback mLocationCallback;
-    private Location mLastLocation;
-    private Marker mCurrLocationMarker;
+    private ArrayList<LatLng> previousLocations = new ArrayList<>();
+    private ArrayList<MarkerOptions> markedLocations = new ArrayList<>();
+    private boolean markerRequested = false;
+    private int markerCount = 0;
+    private double distance = 0;
     private FusedLocationProviderClient mFusedLocationClient;
+
+    private final int POLYLINE_COLOR = 0xffff00ff;
+
+    // gets distance between user guess and correct location in miles
+    public double getDistance(double lat1, double lon1, double lat2, double lon2) {
+        double R = 6371e3; // metres
+        double φ1 = Math.toRadians(lat1);
+        double φ2 = Math.toRadians(lat2);
+        double Δφ = Math.toRadians(lat2-lat1);
+        double Δλ = Math.toRadians(lon2-lon1);
+
+        double a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                        Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return ((R * c) / 1000) / 1.609;
+    }
+
+    public void updateDistanceText() {
+        if (distance < .8)
+            distanceTxt.setText("Distance: " + Double.parseDouble(String.format("%.2f", distance * 5280)) + " Feet");
+        else
+            distanceTxt.setText("Distance: " + Double.parseDouble(String.format("%.2f", distance)) + " Miles");
+    }
+
+    public void addMarker(LatLng latLng, String title, float color) {
+        MarkerOptions markerOptions = new MarkerOptions();
+        markerOptions.position(latLng);
+        markerOptions.title(title);
+        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(color));
+        mGoogleMap.addMarker(markerOptions);
+        markedLocations.add(markerOptions);
+        previousLocations.add(latLng);
+        mGoogleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 20));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
 
+        distanceTxt = findViewById(R.id.distanceTxt);
+
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         mapFrag = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFrag.getMapAsync(this);
+
+        findViewById(R.id.turnButton).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                markerRequested = true;
+            }
+        });
+
+        findViewById(R.id.undoButton).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (markedLocations.size() > 1) {
+                    distance -= getDistance(previousLocations.get(previousLocations.size() - 2).latitude, previousLocations.get(previousLocations.size() - 2).longitude, previousLocations.get(previousLocations.size() - 1).latitude, previousLocations.get(previousLocations.size() - 1).longitude);
+                    updateDistanceText();
+                    markedLocations.remove(markedLocations.size() - 1);
+                    previousLocations.remove(previousLocations.size() - 1);
+                    markerCount--;
+                    mGoogleMap.clear();
+                    for (MarkerOptions markerOptions : markedLocations)
+                        mGoogleMap.addMarker(markerOptions);
+                    for (int i = 1; i < previousLocations.size(); i++)
+                        mGoogleMap.addPolyline(new PolylineOptions()
+                                .clickable(false)
+                                .add(previousLocations.get(i - 1), previousLocations.get(i))).setColor(POLYLINE_COLOR);
+                }
+            }
+        });
 
         mLocationCallback = new LocationCallback() {
             @Override
@@ -101,22 +136,24 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 if (locationList.size() > 0) {
                     //The last location in the list is the newest
                     Location location = locationList.get(locationList.size() - 1);
-                    Log.i("MapsActivity", "Location: " + location.getLatitude() + " " + location.getLongitude());
-                    mLastLocation = location;
-                    if (mCurrLocationMarker != null) {
-                        mCurrLocationMarker.remove();
-                    }
-
-                    //Place current location marker
                     LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-                    MarkerOptions markerOptions = new MarkerOptions();
-                    markerOptions.position(latLng);
-                    markerOptions.title("Current Position");
-                    markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
-                    mCurrLocationMarker = mGoogleMap.addMarker(markerOptions);
-
-                    //move map camera
-                    mGoogleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 11));
+                    Log.i("MapsActivity", "Location: " + location.getLatitude() + " " + location.getLongitude());
+                    if (markedLocations.size() == 0) {
+                        addMarker(latLng, "Start Position", BitmapDescriptorFactory.HUE_GREEN);
+                        distanceTxt.setText("Distance: " + 0);
+                    }
+                    //Place current location marker
+                    if (markerRequested && markedLocations.size() > 0) {
+                        markerCount++;
+                        addMarker(latLng, "Turn " + markerCount, BitmapDescriptorFactory.HUE_CYAN);
+                        LatLng previousLocation = previousLocations.get(previousLocations.size() - 1);
+                        mGoogleMap.addPolyline(new PolylineOptions()
+                                .clickable(false)
+                                .add(previousLocation, latLng)).setColor(POLYLINE_COLOR);
+                        distance += getDistance(previousLocation.latitude, previousLocation.longitude, latLng.latitude, latLng.longitude);
+                        updateDistanceText();
+                        markerRequested = false;
+                    }
                 }
             }
         };
@@ -137,14 +174,12 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         mGoogleMap.setMapType(GoogleMap.MAP_TYPE_HYBRID);
 
         mLocationRequest = new LocationRequest();
-        mLocationRequest.setInterval(10000);
-        mLocationRequest.setFastestInterval(5000);
+        mLocationRequest.setInterval(10);
+        mLocationRequest.setFastestInterval(1);
         mLocationRequest.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this,
-                    Manifest.permission.ACCESS_FINE_LOCATION)
-                    == PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                 //Location Permission already granted
                 mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.myLooper());
                 mGoogleMap.setMyLocationEnabled(true);
