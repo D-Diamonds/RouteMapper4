@@ -7,6 +7,12 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 
+/*
+    The MainActivity is a simple introduction screen which allows the user to simply start the routing program,
+    this activity is used to return to while the MapsActivity restarts
+    Note: See MapsActivity for MapsActivity implementation
+ */
+
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
     private Button startButton;

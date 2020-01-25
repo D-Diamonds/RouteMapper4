@@ -7,7 +7,7 @@
     tools:context=".MainActivity">
 
     <ImageView
-        android:id="@+id/backgroundImageView2"
+        android:id="@+id/backgroundImageView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -84,13 +84,22 @@
             android:text="Turn" />
 
         <Button
-            android:id="@+id/undoButton"
+            android:id="@+id/endButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_weight="0"
+            android:background="#FFFFFA"
+            android:text="End" />
+
+        <Button
+            android:id="@+id/multiButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_margin="25dp"
             android:layout_weight="0"
             android:background="#FFFFFA"
             android:text="Undo" />
+
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
